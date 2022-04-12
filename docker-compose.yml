@@ -1,0 +1,172 @@
+version: "3.8"
+services:
+  user-mysqldb:
+    container_name: user-mysqldb
+    image: mysql:8.0.24
+    ports: 
+      - "3306:3306"
+    networks: 
+      - backend
+    environment:
+      - MYSQL_ROOT_PASSWORD=1234
+      - MYSQL_DATABASE=userdb
+      - MYSQL_USER=sa
+      - MYSQL_PASSWORD=1234
+    cap_add:
+      - SYS_NICE
+  videogame-mysqldb:
+    container_name: videogame-mysqldb
+    image: mysql:8.0.24
+    ports: 
+      - "3307:3306"
+    networks: 
+      - backend
+    environment:
+      - MYSQL_ROOT_PASSWORD=1234
+      - MYSQL_DATABASE=videogamedb
+      - MYSQL_USER=sa
+      - MYSQL_PASSWORD=1234
+    cap_add:
+      - SYS_NICE
+  comment-mysqldb:
+    container_name: comment-mysqldb
+    image: mysql:8.0.24
+    ports: 
+      - "3308:3306"
+    networks: 
+      - backend
+    environment:
+      - MYSQL_ROOT_PASSWORD=1234
+      - MYSQL_DATABASE=commentdb
+      - MYSQL_USER=sa
+      - MYSQL_PASSWORD=1234
+    cap_add:
+      - SYS_NICE
+  eureka-service:
+    build: 
+      context: ./ms-eureka
+      dockerfile: Dockerfile
+    container_name: eureka-service
+    image: eureka-service
+    ports:
+      - "8761:8761"
+    networks:
+      - backend 
+    environment:
+      - SERVER_PORT=8761
+    hostname: eureka-service
+
+  user-service:
+    build: 
+      context: ./ms-user
+      dockerfile: Dockerfile
+    container_name: user-service
+    image: user-service
+    ports:
+      - "8081:8081"
+    networks:
+      - backend 
+    links:
+      - eureka-service
+    environment:
+      - SERVER_PORT=8081
+      - API_CROSS_ORIGIN_URLS=http://aggregator-service:8084,http://gateway-service:8080 
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-service:8761/eureka  
+      - SPRING_DATASOURCE_URL=jdbc:mysql://user-mysqldb:3306/userdb?allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=UTC
+      - SPRING_DATASOURCE_USERNAME=sa
+      - SPRING_DATASOURCE_PASSWORD=1234
+    depends_on:
+      - eureka-service 
+      - user-mysqldb
+  
+  videogame-service:
+    build: 
+      context: ./ms-videogame
+      dockerfile: Dockerfile
+    container_name: videogame-service
+    image: videogame-service
+    ports:
+      - "8082:8082"
+    networks:
+      - backend 
+    links:
+      - eureka-service
+    environment:
+      - SERVER_PORT=8082
+      - API_CROSS_ORIGIN_URLS=http://aggregator-service:8084,http://gateway-service:8080 
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-service:8761/eureka  
+      - SPRING_DATASOURCE_URL=jdbc:mysql://videogame-mysqldb:3306/videogamedb?allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=UTC
+      - SPRING_DATASOURCE_USERNAME=sa
+      - SPRING_DATASOURCE_PASSWORD=1234
+    depends_on:
+      - eureka-service 
+      - user-mysqldb
+  
+  comment-service:  
+    build: 
+      context: ./ms-comment
+      dockerfile: Dockerfile
+    container_name: comment-service
+    image: comment-service
+    ports:
+      - "8083:8083"
+    networks:
+      - backend 
+    links:
+      - eureka-service
+    environment:
+      - SERVER_PORT=8083
+      - API_CROSS_ORIGIN_URLS=http://aggregator-service:8084,http://gateway-service:8080 
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-service:8761/eureka  
+      - SPRING_DATASOURCE_URL=jdbc:mysql://comment-mysqldb:3306/commentdb?allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=UTC
+      - SPRING_DATASOURCE_USERNAME=sa
+      - SPRING_DATASOURCE_PASSWORD=1234
+    depends_on:
+      - eureka-service 
+      - user-mysqldb
+  aggregator-service:
+    build: 
+      context: ./ms-aggregator
+      dockerfile: Dockerfile
+    container_name: aggregator-service
+    image: aggregator-service
+    ports:
+      - "8084:8084"
+    networks:
+      - backend 
+    links:
+      - eureka-service
+    environment:
+      - SERVER_PORT=8084
+      - USER_CLIENT_URL=http://user-service:8081/api
+      - VIDEOGAME_CLIENT_URL=http://videogame-service:8082/api
+      - COMMENT_CLIENT_URL=http://comment-service:8083/api
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-service:8761/eureka  
+    depends_on:
+      - eureka-service 
+  gateway-service:
+    build: 
+      context: ./ms-gateway
+      dockerfile: Dockerfile
+    container_name: gateway-service
+    image: gateway-service
+    ports:
+      - "8080:8080"
+    networks:
+      - backend 
+    links:
+      - eureka-service
+    environment:
+      - SERVER_PORT=8080
+      - USER_URI=http://user-service:8081
+      - VIDEOGAME_URI=http://videogame-service:8082
+      - COMMENT_URI=http://comment-service:8083
+      - AGGREGATION_URI=http://comment-service:8084
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-service:8761/eureka  
+      - API_CROSS_ORIGIN_URLS=http://aggregator-service:8084,http://gateway-service:8080 
+    depends_on:
+      - eureka-service 
+networks:
+  backend:
+    name: microservizi_backend
+    driver: bridge
